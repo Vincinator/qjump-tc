@@ -1,8 +1,15 @@
+ifndef KERNEL_SRC
+$(error KERNEL_SRC is not set)
+endif
+
+
+MODULE_WORKING_DIR = $(shell pwd)
+
 obj-m += sch_qjump.o
 
 all:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	make -C $(KERNEL_SRC) M=$(MODULE_WORKING_DIR) modules
 
 clean:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-                                                                            
+	make -C $(KERNEL_SRC) M=$(MODULE_WORKING_DIR) clean
+

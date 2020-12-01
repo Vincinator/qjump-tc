@@ -31,6 +31,7 @@
 #include <linux/skbuff.h>
 #include <net/pkt_sched.h>
 #include <linux/time.h>
+#include <linux/ktime.h>
 #include <linux/netdevice.h>
 #include <linux/moduleparam.h>
 #include <net/sock.h>
@@ -102,12 +103,9 @@ struct qjump_fifo_priv{
 static int qfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 {
     struct qjump_fifo_priv* priv = qdisc_priv(sch);
-    struct timespec ts;
     const u64 ts_now_cycles = get_cycles();
     u64 ts_now_ns = 0;
-    getnstimeofday(&ts);
-    ts_now_ns = ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec;
-
+    ts_now_ns = ktime_get_ns();
     if(ts_now_cycles >= priv->next_timeout_cyles){
         priv->next_timeout_cyles = ts_now_cycles + time_quant_cyles;
 
@@ -173,7 +171,7 @@ struct Qdisc *qjump_fifo_create_dflt(struct netdev_queue *dev_queue, struct Qdis
 {
     struct Qdisc *q;
     int err = -ENOMEM;
-    //struct timespec ts; //Allow QJump to be run directly from getnstimeofday()
+    //struct timespec64 ts; //Allow QJump to be run directly from getnstimeofday()
 
 
     if(verbose >= 1) printk("qjump[%lu]: Init fifo limit=%u\n", verbose, limit);
@@ -224,6 +222,7 @@ static int qjump_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 {
     struct Qdisc *qdisc;
     int ret;
+    u64 ts_now_ns = 0;
 
     qdisc = qjump_classify(skb, sch, &ret);
 
@@ -247,10 +246,7 @@ static int qjump_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 
 
         if(verbose>=2){
-            u64 ts_now_ns = 0;
-            struct timespec ts = {0};
-            getnstimeofday(&ts);
-            ts_now_ns = ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec;
+	    ts_now_ns = ktime_get_ns();
             printk("QJump[%lu]: (%u) Downgraded: %u,%u,%u,%llu",
                    verbose, qdisc->limit,  qdisc_pkt_len(skb), old_pri, skb->priority, ts_now_ns
                    );
@@ -444,7 +440,6 @@ struct Qdisc_ops qjump_qdisc_ops __read_mostly = {
 
 static int __init qjump_module_init(void)
 {
-    struct timespec ts;
     u64 ts_start_ns = 0;
     u64 ts_end_ns = 0;
     u64 start_cycles = 0;
@@ -464,14 +459,12 @@ static int __init qjump_module_init(void)
     }
 
     for(i = 0; i <3; i++){
-        getnstimeofday(&ts);
-        ts_start_ns = (ts.tv_nsec + ts.tv_sec * SEC2NS );
+	ts_start_ns = ktime_get_ns();
         if(verbose >= 0 ) printk("QJump[%lu]: Calculating CPU speed %i\n", verbose, i);
         start_cycles = get_cycles();
         while(1){
-            getnstimeofday(&ts);
-            ts_end_ns = (ts.tv_nsec + ts.tv_sec * SEC2NS );
-            if((ts_end_ns - ts_start_ns) >= 1 * SEC2NS){
+            ts_end_ns = ktime_get_ns();
+	    if((ts_end_ns - ts_start_ns) >= 1 * SEC2NS){
                 end_cycles = get_cycles();
                 break;
             }

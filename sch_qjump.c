@@ -147,7 +147,7 @@ static int qfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 }
 
 
-static int qfifo_init(struct Qdisc *sch, struct nlattr *opt)
+static int qfifo_init(struct Qdisc *sch, struct nlattr *opt, struct netlink_ext_ack *extack)
 {
     sch->flags &= ~TCQ_F_CAN_BYPASS;
     return 0;
@@ -160,7 +160,6 @@ struct Qdisc_ops qjump_fifo_qdisc_ops __read_mostly = {
         .enqueue    =   qfifo_enqueue,
         .dequeue    =   qdisc_dequeue_head,
         .peek       =   qdisc_peek_head,
-        .drop       =   qdisc_queue_drop,
         .init       =   qfifo_init,
         .reset      =   qdisc_reset_queue,
         .change     =   qfifo_init,
@@ -218,7 +217,7 @@ static struct Qdisc * qjump_classify(struct sk_buff *skb, struct Qdisc *sch, int
 }
 
 
-static int qjump_enqueue(struct sk_buff *skb, struct Qdisc *sch)
+static int qjump_enqueue(struct sk_buff *skb, struct Qdisc *sch, struct sk_buff **to_free)
 {
     struct Qdisc *qdisc;
     int ret;
@@ -226,7 +225,7 @@ static int qjump_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 
     qdisc = qjump_classify(skb, sch, &ret);
 
-    ret = qdisc->enqueue(skb, qdisc);
+    ret = qdisc->enqueue(skb, qdisc, to_free);
     if (ret == NET_XMIT_SUCCESS) {
         sch->q.qlen++;
         return NET_XMIT_SUCCESS;
@@ -254,7 +253,7 @@ static int qjump_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 
 
         qdisc = qjump_classify(skb, sch, &ret);
-        ret = qdisc->enqueue(skb, qdisc);
+        ret = qdisc->enqueue(skb, qdisc, to_free);
         if (ret == NET_XMIT_SUCCESS) {
             skb->sk->sk_priority = skb->priority; //Make sure we come here next time.
             sch->q.qlen++;
@@ -312,26 +311,6 @@ static struct sk_buff *qjump_peek(struct Qdisc *sch)
 
 }
 
-static unsigned int qjump_drop(struct Qdisc *sch)
-{
-    struct qjump_sched_data *q = qdisc_priv(sch);
-    int band;
-    unsigned int len;
-    struct Qdisc *qdisc;
-
-    for (band = q->bands - 1; band >= 0; band--) {
-        qdisc = q->queues[band];
-        if (qdisc->ops->drop) {
-            len = qdisc->ops->drop(qdisc);
-            if (len != 0) {
-                sch->q.qlen--;
-                return len;
-            }
-        }
-    }
-    return 0;
-}
-
 
 static void qjump_reset(struct Qdisc *sch)
 {
@@ -379,7 +358,7 @@ static void qjump_destroy(struct Qdisc *sch)
 
 
 
-static int qjump_init(struct Qdisc *sch, struct nlattr *opt)
+static int qjump_init(struct Qdisc *sch, struct nlattr *opt, struct netlink_ext_ack *extack)
 {
     struct qjump_sched_data *q = qdisc_priv(sch);
     int i; //, err;
@@ -431,7 +410,6 @@ struct Qdisc_ops qjump_qdisc_ops __read_mostly = {
         .enqueue	=	qjump_enqueue,
         .dequeue	=	qjump_dequeue,
         .peek		=	qjump_peek,
-        .drop		=	qjump_drop,
         .init		=	qjump_init,
         .reset		=	qjump_reset,
         .destroy	=	qjump_destroy,

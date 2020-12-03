@@ -480,4 +480,4 @@ static void __exit qjump_module_exit(void)
 module_init(qjump_module_init)
 module_exit(qjump_module_exit)
 
-MODULE_LICENSE("BSD");
+MODULE_LICENSE("Dual BSD/GPL");

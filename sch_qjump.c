@@ -100,7 +100,7 @@ struct qjump_fifo_priv{
 };
 
 
-static int qfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch)
+static int qfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch, struct sk_buff **to_free)
 {
     struct qjump_fifo_priv* priv = qdisc_priv(sch);
     const u64 ts_now_cycles = get_cycles();
@@ -166,7 +166,7 @@ struct Qdisc_ops qjump_fifo_qdisc_ops __read_mostly = {
 };
 
 
-struct Qdisc *qjump_fifo_create_dflt(struct netdev_queue *dev_queue, struct Qdisc *sch, struct Qdisc_ops *ops, unsigned int limit)
+struct Qdisc *qjump_fifo_create_dflt(struct netdev_queue *dev_queue, struct Qdisc *sch, struct Qdisc_ops *ops, unsigned int limit, struct netlink_ext_ack *extack)
 {
     struct Qdisc *q;
     int err = -ENOMEM;
@@ -175,7 +175,7 @@ struct Qdisc *qjump_fifo_create_dflt(struct netdev_queue *dev_queue, struct Qdis
 
     if(verbose >= 1) printk("qjump[%lu]: Init fifo limit=%u\n", verbose, limit);
 
-    q = qdisc_create_dflt(dev_queue, ops, TC_H_MAKE(sch->handle, 1));
+    q = qdisc_create_dflt(dev_queue, ops, TC_H_MAKE(sch->handle, 1), extack);
     if (q) {
         struct qjump_fifo_priv* priv = qdisc_priv(q);
         u64 ts_now_cycles = 0;
@@ -261,7 +261,7 @@ static int qjump_enqueue(struct sk_buff *skb, struct Qdisc *sch, struct sk_buff 
         }
     }
 
-    return qdisc_reshape_fail(skb, sch);
+    return qdisc_drop(skb, sch, to_free);
 }
 
 static struct sk_buff *qjump_dequeue(struct Qdisc *sch)
@@ -337,14 +337,17 @@ static void qjump_destroy(struct Qdisc *sch)
             struct Qdisc* sub = q->queues[band];
             struct qjump_fifo_priv* priv = qdisc_priv(sub);
             int i = 0;
-            for(i=0; i < CYCLE_STATS_LEN; i++ ){
-                printk("QJump[STATS] %i %i %llu\n", band, i, priv->cycles_consumed[i]);
-            }
 
-            if(verbose >= 2) printk("QJump[%lu]: Destroying queues %i\n", verbose, band);
-            sub->ops->reset(sub);
-            dev_put(qdisc_dev(sub));
-            kfree_skb(sub->gso_skb);
+            for(i=0; i < CYCLE_STATS_LEN; i++ )
+                printk("QJump[STATS] %i %i %llu\n", band, i, priv->cycles_consumed[i]);
+
+            if(verbose >= 2)
+                printk("QJump[%lu]: Destroying queues %i\n", verbose, band);
+            // reset from sub ops is called in save wrapper qdisc_put!
+	    // sub->ops->reset(sub);
+            // dev_put is called in save wrapper qdisc_put!
+	    // dev_put(qdisc_dev(sub));
+	    qdisc_put(sub);
 
         }
 
@@ -393,7 +396,7 @@ static int qjump_init(struct Qdisc *sch, struct nlattr *opt, struct netlink_ext_
     for (i = 0; i < q->max_bands; i++){
         if(verbose >= 0) printk("QJump[%lu]: Queue %u = @ %lluMb/s \n", verbose, q->max_bands -1 - i, prates_map[i]*bytesq * 8 / timeq );
         dev_queue = netdev_get_tx_queue(dev, q->max_bands -1 - i);
-        q->queues[q->max_bands -1 - i] = qjump_fifo_create_dflt(dev_queue,sch,&qjump_fifo_qdisc_ops,prates_map[i]*bytesq);
+        q->queues[q->max_bands -1 - i] = qjump_fifo_create_dflt(dev_queue,sch,&qjump_fifo_qdisc_ops,prates_map[i]*bytesq, extack);
     }
 
 

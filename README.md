@@ -1,8 +1,6 @@
 # Modification Note
 This fork solely contains modifications of camsas/qjump-tc to support recent linux kernel versions (v5.9.8).
-The Qdisc interface and the timer interfaces of the linux kernel have changed sicne the release of the forked qjump-tc version.
-
-
+The Qdisc interface and the timer interfaces of the linux kernel have changed since the release of the forked qjump-tc version.
 
 
 # qjump-tc
